@@ -1,3 +1,11 @@
+/**
+ * @author Anton Averin <a.a.averin@gmail.com>
+ * 
+ * A cached network manager implementation
+ * Basicall it's a wrapper over NetworkManager, that can enable HttpCache and wraps sendMessage method implementation
+ * HttpCache is implemented using HttpResponseCache Android port (https://github.com/candrews/HttpResponseCache)
+ */
+
 package aaverin.android.net;
 
 import java.io.File;

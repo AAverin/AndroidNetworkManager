@@ -1,3 +1,9 @@
+/**
+ * @author Anton Averin <a.a.averin@gmail.com>
+ * 
+ * Basic Network Manager abstraction - interface for possible implementations
+ */
+
 package aaverin.android.net;
 
 public abstract class AbstractNetworkManager {

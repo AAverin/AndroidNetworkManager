@@ -1,3 +1,9 @@
+/**
+ * @author Anton Averin <a.a.averin@gmail.com>
+ * 
+ * HttpUrlConnection imlpementation of NetworkResponse
+ */
+
 package aaverin.android.net;
 
 import java.io.ByteArrayOutputStream;

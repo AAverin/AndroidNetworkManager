@@ -1,3 +1,32 @@
+/**
+ * @author Anton Averin <a.a.averin@gmail.com>
+ * 
+ * Core NetworkManager implementation
+ * 
+ * NetworkManager operates with NetworkMessages.
+ * NetworkMessages are added to the manager by a call to putMessage method.
+ * 
+ * All messages are stored in the internal queue until releaseQueue method is called.
+ * After that messages are sent one by one, each in a separate thread.
+ * During the process of message sending several callbacks are called
+ * 
+ * onQueueStart() - called when manager starts to go through a new queue. Queue becomes new when it's finished
+ * onQueueFinished() - called when manager finished processing a queue
+ * onQueueFailed() - called in case we have failed to process the queue. It happens when we exceed MAX_FAILURES
+ * 
+ * onNetworkSendStart(NetworkMessage message) - called for each particular message when manager starts the process of sending
+ * 
+ * onNetworkSendProgress(NetworkMessage message) - called while background AsyncTask goes through doInBackground method
+ * 
+ * onNetworkSendSuccess(NetworkMessage message, NetworkResponse response) - called when manager succeeds to send a message and got a response
+ * 
+ * onNetworkSendFailure(NetworkMessage message, NetworkResponse response) - called when manager fails to send a message
+ * onNetworkSendFailure(NetworkMessage message, NetworkResponse response, Exception e)
+ * 
+ * Success is 200 OK in server response.
+ * Everything else is a failure.
+ */
+
 package aaverin.android.net;
 
 import java.io.BufferedInputStream;
@@ -9,9 +38,6 @@ import java.net.HttpURLConnection;
 import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
-
-import nimbleschedule.android.NS_Debug;
-import nimbleschedule.android.NS_Version;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
@@ -25,17 +51,30 @@ import org.apache.http.params.HttpProtocolParams;
 
 import com.integralblue.httpresponsecache.HttpResponseCache;
 
+import aaverin.android.pDebug;
 import android.os.AsyncTask;
 import android.util.Log;
 
 public class NetworkManager extends AbstractNetworkManager implements OnNetworkSendListener {
+
+	// [NOT YET IMPLEMENTED] Allows sending all messages from queue in one batch
 	public final static boolean IS_BATCH_SEND_SUPPORTED = false;
 
+	// Timeout of network connection
 	private final static int NETWORK_TIMEOUT = 5000;
+
+	// Maximum amount of attempts that can fail
 	private final static int MAX_FAILURES = 3;
 
+	// Currently used NetworkManager implementation
 	public final static String NETWORK_MANAGER_CORE = NetworkManagerCore.HTTPURLCONNECTION;
 
+	/**
+	 * interface allowing to pick between Apache and URLConnection implementations
+	 * 
+	 * @author Anton Averin
+	 * 
+	 */
 	public static interface NetworkManagerCore {
 		public final static String APACHE = "APACHE_HTTP_CLIENT";
 		public final static String HTTPURLCONNECTION = "HTTP_URL_CONNECTION";
@@ -43,6 +82,7 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 
 	protected static NetworkManager instance = null;
 	private ArrayList<NetworkMessage> messageQueue = null;
+	private NetworkThread mainNetworkThread = null;
 
 	private int failuresCount = 0;
 
@@ -50,26 +90,36 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 
 	private ArrayList<NetworkListener> listeners = new ArrayList<NetworkListener>();
 
+	/**
+	 * Subscribes listener to NetworkManager events
+	 */
 	public void subscribe(NetworkListener listener) {
 		listeners.add(listener);
 	}
 
+	/**
+	 * Unsubscribes listener from NetworkManager events
+	 */
 	public void unsubscribe(NetworkListener listener) {
 		listeners.remove(listener);
 	}
 
+	/**
+	 * Checks if current listener is already subscribed
+	 */
 	public boolean isSubscribed(NetworkListener listener) {
 		return listeners.contains(listener);
 	}
 
+	/**
+	 * Clear all listener subscriptions
+	 */
 	public void clearListeners() {
 		listeners.clear();
 	}
 
 	private NetworkManager() {
 		messageQueue = new ArrayList<NetworkMessage>();
-		// TODO
-		// releaseQueue(IS_BATCH_SEND_SUPPORTED);
 	}
 
 	public static NetworkManager getInstance() {
@@ -79,6 +129,12 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 		return instance;
 	}
 
+	/**
+	 * Turns on httpCache. Please refer to HttpResponseCache documentation.
+	 * 
+	 * @param httpCacheDir
+	 * @param httpCacheSize
+	 */
 	public void enableHttpCache(File httpCacheDir, long httpCacheSize) {
 		try {
 			Class.forName("android.net.http.HttpResponseCache").getMethod("install", File.class, long.class)
@@ -95,6 +151,9 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 		}
 	}
 
+	/**
+	 * Adds a message to the network queue
+	 */
 	public void putMessage(NetworkMessage message) {
 		int messageIndex = messageQueue.indexOf(message);
 		if (messageIndex > -1) {
@@ -103,7 +162,9 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 		messageQueue.add(message);
 	}
 
-	// TODO: implement queueID to allow monitoring several queues
+	/**
+	 * Releases the queue and sends all messages one by one
+	 */
 	public void releaseQueue() {
 		releaseQueue(IS_BATCH_SEND_SUPPORTED);
 	}
@@ -113,14 +174,13 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 			return; // don't re-start the queue if it's already in process
 		}
 
-		// clean messagebuilder
-		MessageBuilder.getInstance().clean();
 		if (messageQueue.size() > 0) {
 			if (sendInBatch) {
-				ArrayList<String> batch = new ArrayList<String>();
-				for (NetworkMessage message : messageQueue) {
-					batch.add(message.asJson());
-				}
+				// TODO: implement batch sending support
+				// ArrayList<String> batch = new ArrayList<String>();
+				// for (NetworkMessage message : messageQueue) {
+				// batch.add(message.asJson());
+				// }
 				// sendMessage(prepareBatchMessage(batch));
 			} else {
 				onQueueStart();
@@ -128,16 +188,6 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 			}
 		}
 	}
-
-	/*
-	 * rewrite private HttpPost prepareBatchMessage(ArrayList<String> batchData) { HttpPost batchPost = new
-	 * HttpPost(NetworkURIs.BATCH_MESSAGE_URI);
-	 * 
-	 * HttpParams requestParams = new BasicHttpParams(); requestParams.setParameter(MessageParameters.JSON_DATA,
-	 * MessageBuilder.getInstance().listToJson(batchData));
-	 * 
-	 * return batchPost; }
-	 */
 
 	private class NetworkThread extends AsyncTask<Void, Void, NetworkResponse> {
 
@@ -167,31 +217,34 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 				try {
 					HttpRequestBase httpRequest = request.getHttpRequest();
 					httpResponse = client.execute(httpRequest);
-					if (NS_Debug.logging) {
-						Log.d(getClass().getName(), String.format("NetworkRequest: %s %s", request.getMethod(), httpRequest.getURI()));
+					if (pDebug.logging) {
+						Log.d(getClass().getName(),
+								String.format("NetworkRequest: %s %s", request.getMethod(), httpRequest.getURI()));
 					}
 					response = NetworkResponseFactory.getNetworkResponse();
 					((ApacheHttpClientResponse) response).setResponseArguments(httpResponse);
 					((ApacheHttpClientResponse) response).obtainResponseStream();
 				} catch (Exception e) {
 					e.printStackTrace();
-					//onNetworkSendFailure(request, response, e);
 					isRunning = false;
 				}
 
 			} else if (NETWORK_MANAGER_CORE == NetworkManagerCore.HTTPURLCONNECTION) {
-				final HttpURLConnection conn = (HttpURLConnection) request.getHttpURLConnection();;
+				final HttpURLConnection conn = (HttpURLConnection) request.getHttpURLConnection();
+				;
 				final Timer timer = new Timer();
 				try {
-					if (NS_Debug.logging) {
-						Log.d(getClass().getName(), String.format("NetworkRequest: %s %s", request.getMethod(), conn.getURL()));
+					if (pDebug.logging) {
+						Log.d(getClass().getName(),
+								String.format("NetworkRequest: %s %s", request.getMethod(), conn.getURL()));
 					}
 					conn.setReadTimeout(NETWORK_TIMEOUT);
 					conn.setConnectTimeout(NETWORK_TIMEOUT);
 					onNetworkSendProgress(request);
 					response = NetworkResponseFactory.getNetworkResponse();
-					//Apparently it seems like some servers may stuck: http://thushw.blogspot.hu/2010/10/java-urlconnection-provides-no-fail.html
-					//To stop connection we have to run a timer for NETWORK_TIMEOUT and stop connection manually
+					// Apparently it seems like some servers may stuck:
+					// http://thushw.blogspot.hu/2010/10/java-urlconnection-provides-no-fail.html
+					// To stop connection we have to run a timer for NETWORK_TIMEOUT and stop connection manually
 					timer.schedule(new TimerTask() {
 						@Override
 						public void run() {
@@ -205,15 +258,16 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 					}, NETWORK_TIMEOUT);
 					BufferedInputStream in = new BufferedInputStream(conn.getInputStream());
 					byte[] body = readStream(in);
-					((HttpUrlConnectionResponse) response).setResponseArguments(conn.getResponseCode(), conn.getHeaderFields(), body);
+					((HttpUrlConnectionResponse) response).setResponseArguments(conn.getResponseCode(),
+							conn.getHeaderFields(), body);
 				} catch (Exception e) {
 					try {
-						((HttpUrlConnectionResponse) response).setResponseArguments(conn.getResponseCode(), conn.getHeaderFields(), null);
+						((HttpUrlConnectionResponse) response).setResponseArguments(conn.getResponseCode(),
+								conn.getHeaderFields(), null);
 					} catch (IOException e1) {
 						// TODO Auto-generated catch block
 						e1.printStackTrace();
 					}
-					//onNetworkSendFailure(request, response, e);
 					e.printStackTrace();
 				} finally {
 					if (timer != null) {
@@ -230,14 +284,15 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 		@Override
 		protected void onPostExecute(NetworkResponse result) {
 			if (result != null) {
-				
-				if (NS_Debug.logging && NS_Version.APP_VERSION == NS_Version.AppVersions.MILESTONE3) {
+
+				if (pDebug.logging) {
 					HttpResponseCache cache = HttpResponseCache.getInstalled();
 					if (cache != null) {
 						int total = cache.getRequestCount();
 						int network = cache.getNetworkCount();
 						int hit = cache.getHitCount();
-						Log.d(getClass().getName(), String.format("NetworkManager::HttpResponseCache Total/Network/Cache %d/%d/%d", total, network, hit));						
+						Log.d(getClass().getName(), String.format(
+								"NetworkManager::HttpResponseCache Total/Network/Cache %d/%d/%d", total, network, hit));
 					}
 				}
 
@@ -251,18 +306,6 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 		}
 
 	}
-
-	// utilities
-	private static byte[] readStream(InputStream in) throws IOException {
-		byte[] buf = new byte[1024];
-		int count = 0;
-		ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
-		while ((count = in.read(buf)) != -1)
-			out.write(buf, 0, count);
-		return out.toByteArray();
-	}
-
-	private NetworkThread mainNetworkThread = null;
 
 	protected void sendMessage(final NetworkMessage message) {
 		mainNetworkThread = new NetworkThread(message);
@@ -284,9 +327,7 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 	}
 
 	public void onNetworkSendSuccess(NetworkMessage message, NetworkResponse response) {
-		// TODO: maybe it's a good idea to add chained messages support? So we could chain requests that should go in
-		// some order
-		// anyway, if message successeded just remove it from queue
+		// if message succeeded just remove it from queue
 		messageQueue.remove(message);
 
 		for (NetworkListener networkListener : listeners) {
@@ -302,11 +343,6 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 	}
 
 	public void onNetworkSendFailure(NetworkMessage message, NetworkResponse response, Exception e) {
-		if (IS_BATCH_SEND_SUPPORTED) {
-
-		} else {
-
-		}
 		for (NetworkListener networkListener : listeners) {
 			networkListener.requestFail(message, response);
 		}
@@ -360,5 +396,15 @@ public class NetworkManager extends AbstractNetworkManager implements OnNetworkS
 		if (cache != null) {
 			cache.flush();
 		}
+	}
+
+	// utilities
+	private static byte[] readStream(InputStream in) throws IOException {
+		byte[] buf = new byte[1024];
+		int count = 0;
+		ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
+		while ((count = in.read(buf)) != -1)
+			out.write(buf, 0, count);
+		return out.toByteArray();
 	}
 }

@@ -1,3 +1,10 @@
+/**
+ * @author Anton Averin <a.a.averin@gmail.com>
+ * 
+ * A generic network listener
+ * Methods basically do what they read
+ */
+
 package aaverin.android.net;
 
 public interface NetworkListener {

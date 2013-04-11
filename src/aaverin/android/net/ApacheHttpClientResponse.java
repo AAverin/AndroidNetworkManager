@@ -1,3 +1,9 @@
+/**
+ * @author Anton Averin <a.a.averin@gmail.com>
+ * 
+ * Apache Http Client implementation for NetworkResponse
+ */
+
 package aaverin.android.net;
 
 import java.io.ByteArrayOutputStream;

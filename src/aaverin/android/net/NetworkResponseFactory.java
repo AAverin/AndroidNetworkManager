@@ -1,6 +1,6 @@
 package aaverin.android.net;
 
-import nimbleschedule.android.net.NetworkManager.NetworkManagerCore;
+import aaverin.android.net.NetworkManager.NetworkManagerCore;
 
 public class NetworkResponseFactory {
     
