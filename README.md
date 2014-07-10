@@ -4,6 +4,7 @@ Basic NetworkManager implementation for Android that I use in my projects.
 
 ## Idea
 The idea behind this project was to implement a generic NetworkManager for Android.
+(please note that this project is long outdated and is here only as a code sample. I've switched to Retrofit library quite some time ago)
 
 
 Every Android apps developer has to work with REST APIs and server-side.
